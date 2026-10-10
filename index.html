@@ -12,7 +12,7 @@
   canvas { position: absolute; inset: 0; width: 1920px; height: 1080px; }
   /* 背景のYouTube動画（2枚を重ねてクロスフェード）。1.2倍に拡大してYouTubeのタイトル帯等を画面外へ逃がす */
   #bgv { position: absolute; inset: 0; overflow: hidden; pointer-events: none; opacity: 0; }
-  #bgv .pl { position: absolute; left: -192px; top: -108px; width: 2304px; height: 1296px; opacity: 0; transition: opacity 700ms ease; }
+  #bgv .pl { position: absolute; left: -192px; top: -108px; width: 2304px; height: 1296px; opacity: 0; transition: opacity 500ms ease; }
   #bgv .pl.on { opacity: 1; }
   #bgv iframe { width: 100%; height: 100%; border: 0; pointer-events: none; }
   .ln {
@@ -47,7 +47,7 @@
 </head>
 <body>
 <div id="stage">
-  <div id="bgv"><div class="pl"><div id="yt0"></div></div><div class="pl"><div id="yt1"></div></div></div>
+  <div id="bgv"><div class="pl"><div id="yt0"></div></div><div class="pl"><div id="yt1"></div></div><div class="pl"><div id="yt2"></div></div></div>
   <canvas id="cv" width="1920" height="1080"></canvas>
   <div id="title"><div class="t"></div><div class="b"></div></div>
   <div id="lines"></div>
@@ -177,9 +177,10 @@ const VIDEOS = ['vwOt9eMxVqo','qxzie01o_Ns','eu79_Mk4zxs','KS6tfBCpTKQ','iDR0Sj_
   'E3Gc4eCyeoE','q95ww3PmapU','0IzLh-8TF94','uGcnH4h-Z0w','XAqWlbKf2cU','lAe5Tbm1QC0','d5Sy3Wqk0FI','PvvsOHC6pew','K3iVNIl4_To','PMsq6OEBF9g',
   '7hwG0-4gMbM','If6AsXqUows','U1pEUnuVoiw','crKYwxF_A_g'];
 const SHOW_SEC = 3;             // 1本あたりの表示秒数（その後クロスフェードで次の動画へ。次の動画の準備が間に合わない場合は準備完了まで延びる）
+const NP = 3;                   // 同時に読み込んでおくプレーヤー数（1つが表示中、残りは頭出し済みで待機）
 const bgv = document.getElementById('bgv');
 const pls = [...bgv.querySelectorAll('.pl')];
-const vp = [null, null], vst = ['idle', 'idle'], vtimer = [0, 0];
+const vp = new Array(NP).fill(null), vst = new Array(NP).fill('idle'), vtimer = new Array(NP).fill(0), readyAt = new Array(NP).fill(0);
 let useVideo = true, act = -1, shownAt = 0, vmix = 0;
 const recent = [], bad = new Set();
 function pickVideo() {
@@ -200,43 +201,45 @@ function onVState(j, s) {
       const d = p.getDuration() || 0;
       vst[j] = 'seeking'; if (d > 60) p.seekTo(d * (0.08 + Math.random() * 0.6), true); else p.seekTo(0, true);
     } else if (vst[j] === 'seeking') {
-      vst[j] = 'ready'; clearTimeout(vtimer[j]);
-      if (act < 0) { act = j; reveal(j); } else p.pauseVideo();
-    } else if (vst[j] === 'starting') { vst[j] = 'showing'; reveal(j); }
+      vst[j] = 'ready'; readyAt[j] = performance.now(); clearTimeout(vtimer[j]);
+      if (act < 0) { act = j; vst[j] = 'starting'; reveal(j); } else p.pauseVideo();
+    } else if (vst[j] === 'starting') reveal(j);
   } else if (s === YT.PlayerState.ENDED && j === act) {
-    if (vst[1 - j] === 'ready') nextVideo(true); else { p.seekTo(0, true); p.playVideo(); }
+    if (readyList().length) nextVideo(true); else { p.seekTo(0, true); p.playVideo(); }
   }
 }
+const readyList = () => vp.map((_, j) => j).filter(j => j !== act && vst[j] === 'ready').sort((a, b) => readyAt[a] - readyAt[b]);
 function reveal(j) {
-  pls[j].classList.add('on'); shownAt = performance.now();
-  const o = 1 - j;
-  if (pls[o].classList.contains('on')) { pls[o].classList.remove('on'); setTimeout(() => { if (act !== o) { vp[o].pauseVideo(); prepare(o); } }, 1000); }
-  else if (vp[o] && vst[o] === 'idle') prepare(o);
-  vst[j] = 'showing';
+  pls[j].classList.add('on'); shownAt = performance.now(); vst[j] = 'showing';
+  pls.forEach((el, o) => {
+    if (o === j || !el.classList.contains('on')) return;
+    el.classList.remove('on');
+    setTimeout(() => { if (act !== o) { vp[o].pauseVideo(); prepare(o); } }, 1000);
+  });
+  vp.forEach((_, o) => { if (o !== j && vst[o] === 'idle') prepare(o); });
 }
 function nextVideo(force) {
   if (act < 0 || !useVideo) return;
-  const o = 1 - act;
-  if (vst[o] !== 'ready') { if (force && vst[o] === 'idle') prepare(o); return; }
-  act = o; vst[o] = 'starting'; vp[o].playVideo();
+  const r = readyList(); if (!r.length) return;
+  const o = r[0]; act = o; vst[o] = 'starting'; vp[o].playVideo();
 }
 function setVideoMode(on) {
   useVideo = on;
   if (act >= 0) on ? vp[act].playVideo() : vp[act].pauseVideo();
 }
-setInterval(() => { if (useVideo && act >= 0 && vst[act] === 'showing' && performance.now() - shownAt > SHOW_SEC * 1000) nextVideo(false); }, 1000);
+setInterval(() => { if (useVideo && act >= 0 && vst[act] === 'showing' && performance.now() - shownAt > SHOW_SEC * 1000) nextVideo(false); }, 250);
 window.onYouTubeIframeAPIReady = () => {
-  [0, 1].forEach(j => {
+  for (let j = 0; j < NP; j++) {
     vp[j] = new YT.Player('yt' + j, {
       width: 2304, height: 1296,
       playerVars: { autoplay: 1, mute: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, iv_load_policy: 3, playsinline: 1, modestbranding: 1, cc_load_policy: 0 },
       events: {
-        onReady: () => { vp[j].mute(); if (j === 0 || (act >= 0 && vst[j] === 'idle')) prepare(j); },
+        onReady: () => { vp[j].mute(); vp[j].setPlaybackQuality('medium'); setTimeout(() => { if (vst[j] === 'idle') prepare(j); }, j * 400); },
         onStateChange: e => onVState(j, e.data),
         onError: () => { const id = (vp[j].getVideoData() || {}).video_id; if (id) bad.add(id); if (j !== act) prepare(j); else nextVideo(true); },
       },
     });
-  });
+  }
 };
 { const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s); }
 
