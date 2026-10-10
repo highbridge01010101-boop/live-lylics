@@ -12,7 +12,7 @@
   canvas { position: absolute; inset: 0; width: 1920px; height: 1080px; }
   /* 背景のYouTube動画（2枚を重ねてクロスフェード）。1.2倍に拡大してYouTubeのタイトル帯等を画面外へ逃がす */
   #bgv { position: absolute; inset: 0; overflow: hidden; pointer-events: none; opacity: 0; }
-  #bgv .pl { position: absolute; left: -192px; top: -108px; width: 2304px; height: 1296px; opacity: 0; transition: opacity 2500ms ease; }
+  #bgv .pl { position: absolute; left: -192px; top: -108px; width: 2304px; height: 1296px; opacity: 0; transition: opacity 700ms ease; }
   #bgv .pl.on { opacity: 1; }
   #bgv iframe { width: 100%; height: 100%; border: 0; pointer-events: none; }
   .ln {
@@ -176,7 +176,7 @@ const VIDEOS = ['vwOt9eMxVqo','qxzie01o_Ns','eu79_Mk4zxs','KS6tfBCpTKQ','iDR0Sj_
   'Ngmj1_bWO04','6s9qFQa_LQo','2vMtmk_9_ks','zfEuXRSi9vQ','yFluoxgYWYA','EbnLnmVfLGQ','chaFhTDLozE','YWbVmMRowiE','5-9TsGC4-Hg','cRgMeug7MUA',
   'E3Gc4eCyeoE','q95ww3PmapU','0IzLh-8TF94','uGcnH4h-Z0w','XAqWlbKf2cU','lAe5Tbm1QC0','d5Sy3Wqk0FI','PvvsOHC6pew','K3iVNIl4_To','PMsq6OEBF9g',
   '7hwG0-4gMbM','If6AsXqUows','U1pEUnuVoiw','crKYwxF_A_g'];
-const SHOW_SEC = 35;            // 1本あたりの表示秒数（その後クロスフェードで次の動画へ）
+const SHOW_SEC = 3;             // 1本あたりの表示秒数（その後クロスフェードで次の動画へ。次の動画の準備が間に合わない場合は準備完了まで延びる）
 const bgv = document.getElementById('bgv');
 const pls = [...bgv.querySelectorAll('.pl')];
 const vp = [null, null], vst = ['idle', 'idle'], vtimer = [0, 0];
@@ -210,7 +210,7 @@ function onVState(j, s) {
 function reveal(j) {
   pls[j].classList.add('on'); shownAt = performance.now();
   const o = 1 - j;
-  if (pls[o].classList.contains('on')) { pls[o].classList.remove('on'); setTimeout(() => { if (act !== o) { vp[o].pauseVideo(); prepare(o); } }, 2800); }
+  if (pls[o].classList.contains('on')) { pls[o].classList.remove('on'); setTimeout(() => { if (act !== o) { vp[o].pauseVideo(); prepare(o); } }, 1000); }
   else if (vp[o] && vst[o] === 'idle') prepare(o);
   vst[j] = 'showing';
 }
