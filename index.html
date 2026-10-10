@@ -10,6 +10,11 @@
   body.hidecursor { cursor: none; }
   #stage { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: 0 0; overflow: hidden; background: #05050f; }
   canvas { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+  /* 背景のYouTube動画（2枚を重ねてクロスフェード）。1.2倍に拡大してYouTubeのタイトル帯等を画面外へ逃がす */
+  #bgv { position: absolute; inset: 0; overflow: hidden; pointer-events: none; opacity: 0; }
+  #bgv .pl { position: absolute; left: -192px; top: -108px; width: 2304px; height: 1296px; opacity: 0; transition: opacity 2500ms ease; }
+  #bgv .pl.on { opacity: 1; }
+  #bgv iframe { width: 100%; height: 100%; border: 0; pointer-events: none; }
   .ln {
     position: absolute; left: 960px; top: 0; white-space: nowrap; font-weight: 700; color: #fff;
     font-family: 'BIZ UDPGothic', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
@@ -42,6 +47,7 @@
 </head>
 <body>
 <div id="stage">
+  <div id="bgv"><div class="pl"><div id="yt0"></div></div><div class="pl"><div id="yt1"></div></div></div>
   <canvas id="cv" width="1920" height="1080"></canvas>
   <div id="title"><div class="t"></div><div class="b"></div></div>
   <div id="lines"></div>
@@ -50,6 +56,8 @@
     <div><kbd>←</kbd> <kbd>BackSpace</kbd> … 1つ戻る</div>
     <div><kbd>B</kbd> <kbd>.</kbd> … 歌詞を一時的に消す／戻す</div>
     <div><kbd>Home</kbd> … 最初（タイトル）に戻る</div>
+    <div><kbd>V</kbd> … 背景を YouTube動画／ライト演出 で切替</div>
+    <div><kbd>N</kbd> … 背景動画を次の動画へ</div>
     <div><kbd>F</kbd> … 全画面表示の切替</div>
     <div><kbd>H</kbd> … この説明を閉じる</div>
   </div>
@@ -141,12 +149,96 @@ addEventListener('keydown', e => {
   else if (['ArrowLeft', 'Backspace', 'PageUp', 'ArrowUp'].includes(k)) { e.preventDefault(); show(idx - 1, -1); }
   else if (k === 'b' || k === 'B' || k === '.') { hidden = !hidden; applyHidden(); }
   else if (k === 'Home') show(0, -1);
+  else if (k === 'v' || k === 'V') setVideoMode(!useVideo);
+  else if (k === 'n' || k === 'N') nextVideo(true);
   else if (k === 'f' || k === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
   else if (k === 'h' || k === 'H') document.getElementById('help').classList.toggle('on');
 });
 addEventListener('click', () => show(idx + 1, 1));
 let mt; addEventListener('mousemove', () => { document.body.classList.remove('hidecursor'); clearTimeout(mt); mt = setTimeout(() => document.body.classList.add('hidecursor'), 2000); });
 setTimeout(() => document.getElementById('toast').classList.add('off'), 6000);
+
+// ---- 背景動画（orangedevil's family channel の動画からランダム再生・ミュート） ----
+// 動画タブの全155本（2026-10-10取得、ショートは除く）から、告知動画（JDsQ6CkOK9k）を除いた154本
+const VIDEOS = ['vwOt9eMxVqo','qxzie01o_Ns','eu79_Mk4zxs','KS6tfBCpTKQ','iDR0Sj_n1c0','T1oMIdodgqM','qs4tw3LIpug','5Z9679IgNP0','0itPYptLCjs','41spvCs0tIA',
+  'CTfm3AHbzwA','Lj83TN98rJg','b0ey-6auU6c','RhwtFAK-i9U','-MxDLWLen2s','rtlMTgUk6ao','IqjKsFeV-tw','AjtiXkw2o9Y','NTuF-eNybh8','RT2UtYQqmac',
+  '7zpuzcEt4ZE','JLv2xgDD2jU','Er45F8ayvcc','8ARuEaV4L4s','7cFhcsEda70','0LJgtt8qUJ4','gnnp6qt5QKM','DE6lnWy2fZo','6DejfppzMww','XyxjCZKnNWI',
+  'q45g6FrMbag','bKplfHo3CU0','MHjC18C0xWg','fBSH7xZLXxc','NqT019OAJfs','oy7-I-Pwdzk','oMuxoV5GH5g','SM8WW0LoyeY','-JQeC1jCrbs','jd09dEXgroM',
+  'VAZWxNkSRPU','SbRbHOq6eUY','dhBBshyNPdA','jma1KGqMkPI','P7LUqeN5phQ','NHuMhDakkwU','pti3-gJJK84','YAIsLbrZ5IU','zJE1dshCJLM','QPxeAe1ZPYc',
+  'MKJpzkb6Awo','TKy9OY8dDus','X_e6TgMjKMc','-a2zCshsJDY','VDXm4envPwk','lx_RvaocYCU','BUbM3lwKXCs','4twjWhRZETw','53fXyLn6VNQ','KHgAzzejAQ8',
+  'vdLUDJ4D6vg','q-gu87DKOSA','Lv1yxOM3lzY','QTtqZo4Kqkw','EPKCT_W4dtw','opVr_jBnhHw','o1mErCSAiR4','puGY6Ixky7I','RgSV7nVaovU','7-vcf-g69_0',
+  'pOKGueo82vc','PPpjUOHENtU','XlnXXGlspNc','-vDlU5kVInc','HWMQCSjV0ec','dwObQHXAmro','zKXi-alpPEE','2q65qiIiA40','ej0o2RnmaZ8','BIiZd3sxdLw',
+  '4OHIB7Q1v60','G3LJ9NEGjaw','w-8d8C7AgAA','6vCGrsTuJE8','Rm6RKoVAWPQ','JPmL-8yw_Ew','kTQ7VgHulCU','vW2xhem2jH4','8xkvgucNJwM','1HBgFfYvzbQ',
+  'jOJmjOjSGAc','xSYxGEN3HHQ','iTilxGue8Hg','VC-2MCMAeT8','BLeyxm0-y4M','0_-CCVmDJXk','LuZOZkekC5A','t45TaKIED6Y','ZOD5bw8w-mg','MqPhqqmfgvE',
+  '2MHUiHOm600','03XwJN3pxuU','6-bJLBzBVDo','2EppH4dT70k','iymnlSvZft0','gGQD5DgwSPE','a74cUR0nEBE','Sj48ka-T9gM','oyWkjw1sA2U','o81wbsMtwGQ',
+  'Tb1Q_Hcu3s8','cEuOQ-zdyk0','IWFCphKNO4k','jfGG5xmshs4','N-o_kDEa-Mc','BNLbzWrJS84','gUde1wgEVtc','BP6-6acxVuQ','AjgLBe7AesM','ByBQ0NG6Xhw',
+  'GWSmmubQ_4c','BsR21JH6AIM','md4XuoqgF2Q','xCYypgpOPhQ','7t0XolfT5hs','nK1fzS3_CRc','6r02G-w4hWE','ZoI2bdoaFtU','ziB7GtXREFE','xMvUufgaRt8',
+  'Ngmj1_bWO04','6s9qFQa_LQo','2vMtmk_9_ks','zfEuXRSi9vQ','yFluoxgYWYA','EbnLnmVfLGQ','chaFhTDLozE','YWbVmMRowiE','5-9TsGC4-Hg','cRgMeug7MUA',
+  'E3Gc4eCyeoE','q95ww3PmapU','0IzLh-8TF94','uGcnH4h-Z0w','XAqWlbKf2cU','lAe5Tbm1QC0','d5Sy3Wqk0FI','PvvsOHC6pew','K3iVNIl4_To','PMsq6OEBF9g',
+  '7hwG0-4gMbM','If6AsXqUows','U1pEUnuVoiw','crKYwxF_A_g'];
+const SHOW_SEC = 35;            // 1本あたりの表示秒数（その後クロスフェードで次の動画へ）
+const bgv = document.getElementById('bgv');
+const pls = [...bgv.querySelectorAll('.pl')];
+const vp = [null, null], vst = ['idle', 'idle'], vtimer = [0, 0];
+let useVideo = true, act = -1, shownAt = 0, vmix = 0;
+const recent = [], bad = new Set();
+function pickVideo() {
+  const pool = VIDEOS.filter(id => !bad.has(id) && !recent.includes(id));
+  const id = (pool.length ? pool : VIDEOS)[Math.floor(Math.random() * (pool.length || VIDEOS.length))];
+  recent.push(id); if (recent.length > 30) recent.shift();
+  return id;
+}
+// 待機側プレーヤーにランダムな動画を読み込み、ランダムな位置まで進めて一時停止しておく
+function prepare(j) {
+  vst[j] = 'loading'; vp[j].loadVideoById(pickVideo());
+  clearTimeout(vtimer[j]); vtimer[j] = setTimeout(() => { if (vst[j] === 'loading' || vst[j] === 'seeking') prepare(j); }, 20000);
+}
+function onVState(j, s) {
+  const p = vp[j];
+  if (s === YT.PlayerState.PLAYING) {
+    if (vst[j] === 'loading') {
+      const d = p.getDuration() || 0;
+      vst[j] = 'seeking'; if (d > 60) p.seekTo(d * (0.08 + Math.random() * 0.6), true); else p.seekTo(0, true);
+    } else if (vst[j] === 'seeking') {
+      vst[j] = 'ready'; clearTimeout(vtimer[j]);
+      if (act < 0) { act = j; reveal(j); } else p.pauseVideo();
+    } else if (vst[j] === 'starting') { vst[j] = 'showing'; reveal(j); }
+  } else if (s === YT.PlayerState.ENDED && j === act) {
+    if (vst[1 - j] === 'ready') nextVideo(true); else { p.seekTo(0, true); p.playVideo(); }
+  }
+}
+function reveal(j) {
+  pls[j].classList.add('on'); shownAt = performance.now();
+  const o = 1 - j;
+  if (pls[o].classList.contains('on')) { pls[o].classList.remove('on'); setTimeout(() => { if (act !== o) { vp[o].pauseVideo(); prepare(o); } }, 2800); }
+  else if (vp[o] && vst[o] === 'idle') prepare(o);
+  vst[j] = 'showing';
+}
+function nextVideo(force) {
+  if (act < 0 || !useVideo) return;
+  const o = 1 - act;
+  if (vst[o] !== 'ready') { if (force && vst[o] === 'idle') prepare(o); return; }
+  act = o; vst[o] = 'starting'; vp[o].playVideo();
+}
+function setVideoMode(on) {
+  useVideo = on;
+  if (act >= 0) on ? vp[act].playVideo() : vp[act].pauseVideo();
+}
+setInterval(() => { if (useVideo && act >= 0 && vst[act] === 'showing' && performance.now() - shownAt > SHOW_SEC * 1000) nextVideo(false); }, 1000);
+window.onYouTubeIframeAPIReady = () => {
+  [0, 1].forEach(j => {
+    vp[j] = new YT.Player('yt' + j, {
+      width: 2304, height: 1296,
+      playerVars: { autoplay: 1, mute: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, iv_load_policy: 3, playsinline: 1, modestbranding: 1, cc_load_policy: 0 },
+      events: {
+        onReady: () => { vp[j].mute(); if (j === 0 || (act >= 0 && vst[j] === 'idle')) prepare(j); },
+        onStateChange: e => onVState(j, e.data),
+        onError: () => { const id = (vp[j].getVideoData() || {}).video_id; if (id) bad.add(id); if (j !== act) prepare(j); else nextVideo(true); },
+      },
+    });
+  });
+};
+{ const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s); }
 
 // ---- 背景エフェクト（MP4版と同じ設計：ゆっくり動くビーム・光線・光の粒。急な明滅なし） ----
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
@@ -163,6 +255,10 @@ function frame(now) {
   const m = 1 - Math.exp(-dt / 0.9); // 約2.5秒でセクションの配色へ移行
   for (const k of Object.keys(pal)) pal[k] = lerp(pal[k], targetPal[k], m);
   const P = pal, W = 480, H = 270, S = W / 640;
+  // 背景動画とライト演出の混合率（動画が表示できない間＝読込中・オフライン時はライト演出のまま）
+  const vOn = useVideo && act >= 0 && (vst[act] === 'showing' || vst[act] === 'starting');
+  vmix = lerp(vmix, vOn ? 1 : 0, 1 - Math.exp(-dt / 0.6)); bgv.style.opacity = vmix.toFixed(3);
+  if (vmix < 0.995) {
   // ベース
   const g = oc.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, rgb(P.base.map(v => v * 0.55 * 1.6))); g.addColorStop(1, rgb(P.base.map(v => v * 1.45 * 1.6)));
@@ -208,8 +304,17 @@ function frame(now) {
     pg.addColorStop(0, rgb(col, a)); pg.addColorStop(0.4, rgb(col, a * 0.85)); pg.addColorStop(0.5, rgb(col, a * 0.25)); pg.addColorStop(1, rgb(col, 0));
     oc.fillStyle = pg; oc.fillRect(xx - r, yy - r, r * 2, r * 2);
   });
+  }
   // 合成：拡大＋ぼかし、歌詞帯の減光、ビネット
-  ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'blur(3px)'; ctx.drawImage(off, 0, 0, 1920, 1080); ctx.filter = 'none';
+  ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(0, 0, 1920, 1080);
+  if (vmix < 0.995) { ctx.globalAlpha = 1 - vmix; ctx.filter = 'blur(3px)'; ctx.drawImage(off, 0, 0, 1920, 1080); ctx.filter = 'none'; ctx.globalAlpha = 1; }
+  if (vmix > 0.005) {
+    // 動画の上：全体を暗くして歌詞を読みやすくし、セクションの色味を薄く重ねる
+    ctx.fillStyle = `rgba(0,0,0,${0.42 * vmix})`; ctx.fillRect(0, 0, 1920, 1080);
+    const tg = ctx.createLinearGradient(0, 0, 0, 1080);
+    tg.addColorStop(0, rgb(P.b, 0.10 * vmix)); tg.addColorStop(1, rgb(P.a, 0.22 * vmix));
+    ctx.fillStyle = tg; ctx.fillRect(0, 0, 1920, 1080);
+  }
   const dk = ctx.createLinearGradient(0, 324 - 300, 0, 324 + 300);
   dk.addColorStop(0, 'rgba(0,0,0,0)'); dk.addColorStop(0.5, 'rgba(0,0,0,0.38)'); dk.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = dk; ctx.fillRect(0, 0, 1920, 1080);
